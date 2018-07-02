@@ -1,197 +1,164 @@
 #!/usr/bin/env python
-import threading, Queue, subprocess
-import re, json, argparse
-import os, sys, signal
-import time, datetime, pytz
+import threading
+import queue
+import subprocess
+import re
+import json
+import argparse
+import os
+import sys
+import signal
+import time
+import datetime
+
+TIMESTAMP = r'(?P<date>\d+-\d+-\d+)\s+(?P<time>\d+:\d+:\d+)'
+SPACE = r'\s+'
+COMMAND = r'\[(?P<action>JOIN|LEAVE|KICK|BAN|COMMAND|CHAT)\]'
+USERNAME = r'(?P<username>[^\s]+)'
+MESSAGE = r'(?P<message>.*)'
+ENTRY = TIMESTAMP + SPACE + COMMAND + SPACE + USERNAME + SPACE + MESSAGE
+KICK_MESSAGE = r'was kicked by (?P<by>[^.\s]+)\. Reason: (?:unspecified|(?P<reason>.*))\.'
+BAN_MESSAGE = r'was banned by (?P<by>[^.\s]+)\. Reason: (?:unspecified|(?P<reason>.*))\.'
+
 
 class Server:
 
     def __init__(self):
-        self.peers = {}
-        self.info = {}
+        self.users = {}
 
-    def start(self, args):
-        self.peers = {}
-        self.info = {}
+    def process_entry(self, info):
+        if (info['action'] == 'JOIN'):
+            self.user_login_event(info, True)
+        elif (info['action'] == 'LEAVE'):
+            self.user_login_event(info, False)
+        elif (info['action'] == 'KICK'):
+            self.user_kicked(info)
+        elif (info['action'] == 'BAN'):
+            self.user_banned(info)
+        elif (info['action'] == 'COMMAND'):
+            self.user_command(info)
+        elif (info['action'] == 'CHAT'):
+            self.user_chat(info)
 
-    def stop(self, args):
-        pass
+    def user_login_event(self, info, is_log_in):
+        if not (info['username'] in self.users.keys()):
+            self.users[info['username']] = {}
+        self.users[info['username']]['online'] = is_log_in
+        self.users[info['username']]['last_seen'] = info['date'] + ' ' + info['time']
 
-    def add_peer(self, args):
-        """Add peer to server list of peers."""
+    def user_kicked(self, info):
+        self.user_login_event(info, False)
+        if not ('kicks' in self.users[info['username']].keys()):
+            self.users[info['username']]['kicks'] = []
+        regex = re.compile(KICK_MESSAGE)
+        kick_details = regex.match(info['message']).groupdict()
+        self.users[info['username']]['kicks'].extend([
+            info['date'] + ' ' + info['time'],
+            kick_details['by'],
+            kick_details['reason']
+        ])
 
-        if args['peer_id'] in self.peers:
-            raise ValueError("Peer id ", args['peer_id'], " already exist, " \
-                    "unable to add the same peer again!", args)
-        if 'peer_ip' not in args:
-            raise ValueError("Missing peer ip for peer ", args['peer_id'], \
-                    ", unable to add new peer!")
-        if 'peer_port' not in args:
-            raise ValueError("Missing peer port for peer ", args['peer_id'], \
-                    ", unable to add new peer!")
-        
-        self.peers[args['peer_id']] = {
-            'peer_ip': args['peer_ip'],
-            'peer_port': args['peer_port'],
-            'online': False,
-            'desyncs': [],
-            'connected': datetime.datetime.utcnow().replace(tzinfo = pytz.utc)
-        }
+    def user_banned(self, info):
+        self.user_login_event(info, False)
+        if not ('bans' in self.users[info['username']].keys()):
+            self.users[info['username']]['bans'] = []
+        regex = re.compile(BAN_MESSAGE)
+        ban_details = regex.match(info['message']).groupdict()
+        self.users[info['username']]['kicks'].extend([
+            info['date'] + ' ' + info['time'],
+            ban_details['by'],
+            ban_details['reason']
+        ])
 
-    def remove_peer(self, args):
-        """Remove peer from server list of peers."""
-        if args['peer_id'] in self.peers:
-            self.peers[args['peer_id']]['disconnected'] = \
-                    datetime.datetime.utcnow().replace(tzinfo = pytz.utc)
-            self.peers[args['peer_id']]['online'] = False
+    def user_command(self, info):
+        self.user_login_event(info, True)
+        self.users[info['username']]['last_command'] = info['message']
 
-    def set_playerindex(self, args):
-        """Set playerindex for a specific peer and mark peer as online"""
-        if args['peer_id'] in self.peers:
-            self.peers[args['peer_id']]['online'] = True
-            self.peers[args['peer_id']]['player_index'] = args['player_index']
+    def user_chat(self, info):
+        info['username'] = info['username'][:-1]
+        self.user_login_event(info, True)
+        self.users[info['username']]['last_chat'] = info['message']
 
-    def desync_peer(self, args):
-        """Register a desync for specific peer."""
-        if args['peer_id'] in self.peers:
-            desync = datetime.datetime.utcnow().replace(tzinfo = pytz.utc)
-            self.peers[args['peer_id']]['desyncs'].append(desync)
-
-    def set_username(self, args):
-        """Set username for a specific peer."""
-
-        """Ignore the server which always has peer id 0"""
-        if args['peer_id'] != 0:
-            self.peers[args['peer_id']]['username'] = args['username']
-
-class Processor:
-    def __init__(self, pattern, action):
-        self.pattern = re.compile(pattern)
-        self.action = action
-
-class DateTimeEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, datetime.datetime):
-            encoded_object = obj.isoformat()
-        else:
-            encoded_object =json.JSONEncoder.default(self, obj)
-        return encoded_object
 
 def tail_forever(filename, queue, tailing):
     """Tail specified file forever, put read lines on queue."""
     if not os.access(filename, os.R_OK):
-        print "Unable to read ", filename
+        print("Unable to read ", filename)
         tailing[0] = False
     try:
         cmd = ['tail', '-F', '-n', '+1', filename]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         while 1:
             line = p.stdout.readline()
-            queue.put(line)
+            queue.put(line.decode("utf-8"))
             if not line:
                 break
-    except:
+    except Exception as e:
         tailing[0] = False
+
 
 def signal_handler(signal, frame):
     print('Shutting down')
     sys.exit(0)
 
+
 def report_status(outputfile, frequency, server, tailing):
     """Output JSON with current status/state with assigned frequency"""
     try:
         status = {
-            'generated': datetime.datetime.utcnow().replace(tzinfo = pytz.utc),
-            'peers': server.peers
+            'generated': datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            'users': server.users
         }
-        
-        status_json = json.dumps(status, indent=1, sort_keys=True, separators=(',', ': '), cls=DateTimeEncoder) 
+
+        status_json = json.dumps(status, indent=4, sort_keys=True)
         status_file = open(outputfile, 'w')
         status_file.write(status_json)
         status_file.close()
-        print status_json
     except Exception as e:
         # TODO: Handle exceptions?
-        print "Error reporting status: ", e
+        print("Error reporting status: ", e)
     finally:
         if tailing[0]:
-            threading.Timer(frequency, report_status, [outputfile, frequency, server, tailing]).start()
+            reporting_thread = threading.Timer(frequency, report_status, [outputfile, frequency, server, tailing])
+            reporting_thread.daemon = True
+            reporting_thread.start()
+
 
 def main(options):
     server = Server()
-    tailq = Queue.Queue()
+    console_tail = queue.Queue()
     signal.signal(signal.SIGINT, signal_handler)
     tailing = [True]
-    threading.Thread(target=tail_forever, args=(options.logfile, tailq,
-        tailing)).start()
-    report_status(options.outputfile, options.statusfrequency, server, tailing)
-
-    regex = {}
-    # NetworkInputHandler.cpp
-    regex[0] = {}
-    regex[0][0] = re.compile("NetworkInputHandler.cpp")
-    regex[0]['removepeer'] = Processor("removing peer\\((?P<peer_id>\d+)\\) success\\(true\\)", server.remove_peer)
-    regex[0]['player_index'] = Processor("assigning playerIndex\\((?P<player_index>\d+)\\) to peer\\((?P<peer_id>\d+)\\)", server.set_playerindex)
-    regex[0]['desync_peer'] = Processor("Multiplayer desynchronisation: crc test\\(CheckCRCHeuristic\\) failed for mapTick\\((?P<map_tick>\d+)\\) peer\\((?P<peer_id>\d+)\\) testCrc\\([^\\)]+\\) testCrcPeerID\\(0\\)", server.desync_peer)
-    # Router.cpp
-    regex[1] = {}
-    regex[1][0] = re.compile("Router.cpp")
-    regex[1]['addingpeer'] = Processor("adding peer\\((?P<peer_id>\d+)\\) address\\((?P<peer_ip>([0-9]{1,3}\\.){3}[0-9]{1,3})\\:(?P<peer_port>[0-9]{1,5})\\)", server.add_peer)
-    regex[1]['server_stop'] = Processor("Router state \\-\\> Disconnected$", server.stop)
-    # MultiplayerManager.cpp
-    regex[2] = {}
-    regex[2][0] = re.compile("MultiplayerManager.cpp")
-    regex[2]['set_username'] = Processor("Received peer info for peer\\((?P<peer_id>\d+)\\) username\\((?P<username>.+)\\)\\.$", server.set_username)
-    regex[2]['server_start'] = Processor("changing state from\\(CreatingGame\\) to\\(InGame\\)$", server.start)
-    regex[2]['removepeer_drop'] = Processor("Peer dropout for peer \\((?P<peer_id>\d+)\\) by peer \\(0\\) -- removing now", server.remove_peer)
-
+    tail_thread = threading.Thread(
+        target=tail_forever,
+        args=(options.logfile, console_tail, tailing)
+    )
+    tail_thread.daemon = True
+    tail_thread.start()
+    report_status(options.outputfile, options.frequency, server, tailing)
+    regex = re.compile(ENTRY)
     while tailing[0]:
         try:
-            line = tailq.get_nowait()
-            for group in regex.iterkeys():
-                groupmatch = regex[group][0].search(line)
-                if groupmatch:
-                    for processor_id in regex[group].iterkeys():
-                        """Skip the group identifier on index 0"""
-                        if processor_id == 0:
-                            continue
-                        processor = regex[group][processor_id]
-                        match = processor.pattern.search(line)
-                        if match:
-                            args = match.groupdict()
-                            try:
-                                args['peer_id'] = int(args['peer_id'])
-                                args['peer_port'] = int(args['peer_port'])
-                            except:
-                                """
-                                We expect most of our regex matches to find
-                                a peer_id, the others can easily be dismissed
-                                as exceptions and passed
-                                """
-                                pass
-                            finally:
-                                processor.action(args)
-                                break
-                    break
-
-        except Queue.Empty:
+            line = console_tail.get_nowait()
+            info_obj = regex.match(line)
+            if not info_obj is None:
+                info = info_obj.groupdict()
+                server.process_entry(info)
+        except queue.Empty:
             time.sleep(0.5)
         except Exception as e:
-            print "Failed attempting to parse line: ", line
-            print "Exception: ", e.message
-        except:
-            print "Something done goofed for real attempting to parse line: " \
-                    , line
+            print("Failed attempting to parse line: ", e.args)
+            print("Exception: ", e.args)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('logfile',
-            help="absolute path to factorio-current.log")
+                        help="absolute path to factorio console log eg /opt/factorio/console.log")
     parser.add_argument('-o', '--outputfile',
-            help="absolute path to status output file")
-    parser.add_argument('-f', '--statusfrequency', type=float,
-            help="frequency in seconds for reporting status")
+                        help="absolute path to status output file")
+    parser.add_argument('-f', '--frequency', type=float,
+                        help="frequency in seconds for reporting status")
 
     options = parser.parse_args()
     sys.exit(main(options))
-

@@ -1,68 +1,77 @@
 # Factorio Log Parser
-A crude log parser for Factorio.
-Run this within a screen, or use the provided systemd example unit to monitor and parse your factorio log.
+A crude log parser for Factorio console log.
 
-The script will output a status.json file containing the connected peers throughout the server sessions lifetime.
-(the list of peers will be reset every time the server/script is restarted).
+The script will output a json file containing the connected users and some of their actions throughout the server lifetime.
 
-While the script itself only provides the information it is up to you to use it in a creative way - for example by presenting the currently online peers on your server status page, or listing the most frequently re-connecting player this session?
-
-# Output (JSON)
-The output file presents you with continous parsing result of the servers "current" state.
-Using this information we can see that since the server started, peer 3 desynced 6 times in short sequence - perhaps a temporary ban is in order? With both peer ip and port at hand you could easily parse this file and adjust your firewall rules to prevent peer 3 from reconnecting for a while.
+## Output (JSON)
+A json file which lists users that appear in the console log:
 
 Example:
  ```JSON
 {
- "generated": "2015-08-13T11:07:24.635245+00:00",
- "peers": {
-  "1": {
-   "connected": "2015-08-13T11:07:20.475868+00:00",
-   "desyncs": [],
-   "disconnected": "2015-08-13T11:07:20.481195+00:00",
-   "online": false,
-   "peer_ip": "X.X.X.X",
-   "peer_port": 34198,
-   "player_index": "0",
-   "username": "RandomPlayer"
-  },
-  "2": {
-   "connected": "2015-08-13T11:07:20.476307+00:00",
-   "desyncs": [
-    "2015-08-13T11:07:20.476866+00:00",
-    "2015-08-13T11:07:20.477324+00:00"
-   ],
-   "disconnected": "2015-08-13T11:07:20.478208+00:00",
-   "online": false,
-   "peer_ip": "X.X.X.X",
-   "peer_port": 51518,
-   "player_index": "4",
-   "username": "RandomGuy"
-  },
-  "3": {
-   "connected": "2015-08-13T11:07:20.478347+00:00",
-   "desyncs": [
-    "2015-08-13T11:07:20.478886+00:00",
-    "2015-08-13T11:07:20.479342+00:00",
-    "2015-08-13T11:07:20.479851+00:00",
-    "2015-08-13T11:07:20.480313+00:00",
-    "2015-08-13T11:07:20.480766+00:00",
-    "2015-08-13T11:07:20.481278+00:00"
-   ],
-   "disconnected": "2015-08-13T11:07:20.482085+00:00",
-   "online": false,
-   "peer_ip": "X.X.X.X",
-   "peer_port": 34197,
-   "player_index": "8",
-   "username": "SomeOne"
-  }
- }
+    "generated": "2018-07-01 20:31:58",
+    "users": {
+        "Stark": {
+            "last_seen": "2018-07-01 14:22:13",
+            "online": false
+        },
+        "Banner": {
+            "last_chat": "Don't make me angry!",
+            "last_seen": "2018-07-01 19:57:19",
+            "online": true
+        },
+        "Odinson": {
+            "kicks": [
+                "2018-07-01 17:40:29",
+                "Banner",
+                "Being too puny"
+            ],
+            "last_chat": "Heimdall, I need more plate.",
+            "last_seen": "2018-07-01 20:29:36",
+            "online": false
+        },
+        "ClintB": {
+            "bans": [
+                "2018-07-01 16:25:11",
+                "RedBack",
+                "Inappropriate language"
+            ],
+            "last_chat": "Where wer you hiding that gun?",
+            "last_seen": "2018-07-01 16:25:11",
+            "last_command": "/c Some Command",
+            "online": false
+        }
+    }
 }
 ```
+## Requirements
+- Python 3.5+
+- Factorio 0.16+
 
-# Versioning
-The code adheres to Semantic Versioning v2.0.0 http://semver.org/spec/v2.0.0.html
-A release is denoted by the github release system using git tags.
+## Setup and Use
+- clone the repo
+```bash
+$ git clone https://github.com/izanbard/factorio-logparser.git
+```
+- install requirements
+```bash
+$ pip install -r requirments.txt 
+```
+- run factorio server with console.log
+```bash
+$ /path/to/factorio --config /path/to/config.ini --start-server-load-latest --server-settings /path/to/server-settings.json --console-log /path/for/console.log
+```
+- run this python script
+```bash
+$ python /path/to/factorio-logparser.py -o ./output.json -f 60 /path/for/console.log
+```
 
-# License
-This code is realeased with the MIT license, see the LICENSE file.
+### Options
+```
+-o <<file>> #set out put file
+-f <<number>> #set update frequency in seconds
+```
+
+## Acknowledgments
+This is version of the log parser is based on the design of [https://github.com/Bisa/factorio-logparser](https://github.com/Bisa/factorio-logparser) coupled with the regex schema from [https://github.com/mickael9/factoirc](https://github.com/mickael9/factoirc).
+
