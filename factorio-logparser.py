@@ -52,11 +52,11 @@ class Server:
             self.users[info['username']]['kicks'] = []
         regex = re.compile(KICK_MESSAGE)
         kick_details = regex.match(info['message']).groupdict()
-        self.users[info['username']]['kicks'].extend([
+        self.users[info['username']]['kicks'].extend([[
             info['date'] + ' ' + info['time'],
             kick_details['by'],
             kick_details['reason']
-        ])
+        ]])
 
     def user_banned(self, info):
         self.user_login_event(info, False)
@@ -64,11 +64,11 @@ class Server:
             self.users[info['username']]['bans'] = []
         regex = re.compile(BAN_MESSAGE)
         ban_details = regex.match(info['message']).groupdict()
-        self.users[info['username']]['kicks'].extend([
+        self.users[info['username']]['kicks'].extend([[
             info['date'] + ' ' + info['time'],
             ban_details['by'],
             ban_details['reason']
-        ])
+        ]])
 
     def user_command(self, info):
         self.user_login_event(info, True)
