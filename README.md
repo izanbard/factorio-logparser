@@ -22,9 +22,11 @@ Example:
         },
         "Odinson": {
             "kicks": [
-                "2018-07-01 17:40:29",
-                "Banner",
-                "Being too puny"
+                [
+                    "2018-07-01 17:40:29",
+                    "Banner",
+                    "Being too puny"
+                ]
             ],
             "last_chat": "Heimdall, I need more plate.",
             "last_seen": "2018-07-01 20:29:36",
@@ -32,11 +34,13 @@ Example:
         },
         "ClintB": {
             "bans": [
-                "2018-07-01 16:25:11",
-                "RedBack",
-                "Inappropriate language"
+                [
+                    "2018-07-01 16:25:11",
+                    "RedBack",
+                    "Inappropriate language"
+                ]
             ],
-            "last_chat": "Where wer you hiding that gun?",
+            "last_chat": "Where were you hiding that gun?",
             "last_seen": "2018-07-01 16:25:11",
             "last_command": "/c Some Command",
             "online": false
