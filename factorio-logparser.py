@@ -49,7 +49,7 @@ class Server:
         self.users[info['username']]['online'] = is_log_in
         self.users[info['username']]['last_seen'] = info['date'] + ' ' + info['time']
         if self.discord_hook is not None:
-            self.__discord_call(info['username'] + (' has logged in' if is_log_in else ' has logged out'))
+            self.__discord_call('[LOGIN] ' + info['username'] + (' has logged in' if is_log_in else ' has logged out'))
 
     def user_kicked(self, info):
         self.user_login_event(info, False)
@@ -63,7 +63,7 @@ class Server:
             kick_details['reason']
         ]])
         if self.discord_hook is not None:
-            self.__discord_call(info['username'] + ' was kicked by' +kick_details['by'])
+            self.__discord_call('[KICK] ' + info['username'] + ' was kicked by' + kick_details['by'])
 
     def user_banned(self, info):
         self.user_login_event(info, False)
@@ -77,20 +77,22 @@ class Server:
             ban_details['reason']
         ]])
         if self.discord_hook is not None:
-            self.__discord_call(info['username'] + ' was banned by ' + ban_details['by'])
+            self.__discord_call('[BAN] ' + info['username'] + ' was banned by ' + ban_details['by'])
 
     def user_command(self, info):
-        self.user_login_event(info, True)
+        if not self.users[info['username']]['online']:
+            self.user_login_event(info, True)
         self.users[info['username']]['last_command'] = info['message']
         if self.discord_hook is not None:
-            self.__discord_call(info['username'] + ' commanded ' + info['message'])
+            self.__discord_call('[COMMAND] ' + info['username'] + ' commanded ' + info['message'])
 
     def user_chat(self, info):
         info['username'] = info['username'][:-1]
-        self.user_login_event(info, True)
+        if not self.users[info['username']]['online']:
+            self.user_login_event(info, True)
         self.users[info['username']]['last_chat'] = info['message']
         if self.discord_hook is not None:
-            self.__discord_call(info['username'] + ' said ' + info['message'])
+            self.__discord_call('[CHAT] ' + info['username'] + ' said ' + info['message'])
 
     def __discord_call(self, message):
         if (time.time() - self.start_time) < 120:
