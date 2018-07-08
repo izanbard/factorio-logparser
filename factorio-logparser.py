@@ -10,6 +10,7 @@ import sys
 import signal
 import time
 import datetime
+import requests
 
 TIMESTAMP = r'(?P<date>\d+-\d+-\d+)\s+(?P<time>\d+:\d+:\d+)'
 SPACE = r'\s+'
@@ -23,8 +24,9 @@ BAN_MESSAGE = r'was banned by (?P<by>[^.\s]+)\. Reason: (?:unspecified|(?P<reaso
 
 class Server:
 
-    def __init__(self):
+    def __init__(self, discord_hook):
         self.users = {}
+        self.discord_hook = discord_hook
 
     def process_entry(self, info):
         if (info['action'] == 'JOIN'):
@@ -45,6 +47,8 @@ class Server:
             self.users[info['username']] = {}
         self.users[info['username']]['online'] = is_log_in
         self.users[info['username']]['last_seen'] = info['date'] + ' ' + info['time']
+        if self.discord_hook is not None:
+            self.__discord_call(info['username'] + ' has logged in')
 
     def user_kicked(self, info):
         self.user_login_event(info, False)
@@ -57,6 +61,8 @@ class Server:
             kick_details['by'],
             kick_details['reason']
         ]])
+        if self.discord_hook is not None:
+            self.__discord_call(info['username'] + ' was kicked by' +kick_details['by'])
 
     def user_banned(self, info):
         self.user_login_event(info, False)
@@ -69,15 +75,31 @@ class Server:
             ban_details['by'],
             ban_details['reason']
         ]])
+        if self.discord_hook is not None:
+            self.__discord_call(info['username'] + ' was banned by ' + ban_details['by'])
 
     def user_command(self, info):
         self.user_login_event(info, True)
         self.users[info['username']]['last_command'] = info['message']
+        if self.discord_hook is not None:
+            self.__discord_call(info['username'] + ' commanded ' + info['message'])
 
     def user_chat(self, info):
         info['username'] = info['username'][:-1]
         self.user_login_event(info, True)
         self.users[info['username']]['last_chat'] = info['message']
+        if self.discord_hook is not None:
+            self.__discord_call(info['username'] + ' said ' + info['message'])
+
+    def __discord_call(self, message):
+        headers = {'content-type': 'application/json'}
+        payload = {
+            'content': message,
+            'username': 'FactoBot'
+        }
+        r = requests.post(self.discord_hook, json=payload, headers=headers)
+        if not r.status_code == 204:
+            print(r.text)
 
 
 def tail_forever(filename, queue, tailing):
@@ -125,7 +147,7 @@ def report_status(outputfile, frequency, server, tailing):
 
 
 def main(options):
-    server = Server()
+    server = Server(options.discord)
     console_tail = queue.Queue()
     signal.signal(signal.SIGINT, signal_handler)
     tailing = [True]
@@ -159,6 +181,8 @@ if __name__ == '__main__':
                         help="absolute path to status output file")
     parser.add_argument('-f', '--frequency', type=float,
                         help="frequency in seconds for reporting status")
+    parser.add_argument('-d', '--discord',
+                        help="Discord Webhook URL")
 
     options = parser.parse_args()
     sys.exit(main(options))
