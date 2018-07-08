@@ -27,6 +27,7 @@ class Server:
     def __init__(self, discord_hook):
         self.users = {}
         self.discord_hook = discord_hook
+        self.start_time = time.time()
 
     def process_entry(self, info):
         if (info['action'] == 'JOIN'):
@@ -48,7 +49,7 @@ class Server:
         self.users[info['username']]['online'] = is_log_in
         self.users[info['username']]['last_seen'] = info['date'] + ' ' + info['time']
         if self.discord_hook is not None:
-            self.__discord_call(info['username'] + ' has logged in')
+            self.__discord_call(info['username'] + (' has logged in' if is_log_in else ' has logged out'))
 
     def user_kicked(self, info):
         self.user_login_event(info, False)
@@ -92,6 +93,8 @@ class Server:
             self.__discord_call(info['username'] + ' said ' + info['message'])
 
     def __discord_call(self, message):
+        if (time.time() - self.start_time) < 120:
+            return
         headers = {'content-type': 'application/json'}
         payload = {
             'content': message,
